@@ -97,7 +97,16 @@ func (s *Schema) CreateColumn(tableName string, sourceColumns []models.Column, d
 
 		default_value := ""
 		if v.ColumnDefault.String != "" {
-			default_value = "DEFAULT " + v.ColumnDefault.String
+			if strings.Contains(v.ColumnType, "int") ||
+				strings.Contains(v.ColumnType, "float") ||
+				strings.Contains(v.ColumnType, "double") ||
+				strings.Contains(v.ColumnType, "bool") ||
+				v.ColumnDefault.String == "CURRENT_TIMESTAMP" {
+				default_value = "DEFAULT " + v.ColumnDefault.String
+			} else {
+				default_value = "DEFAULT '" + v.ColumnDefault.String + "'"
+			}
+
 		}
 
 		comment := ""
