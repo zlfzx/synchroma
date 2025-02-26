@@ -25,7 +25,8 @@ build:
 	done
 
 # Package the application
-package: build
+package: clean build
 	@cd $(BUILD_DIR) && for f in *; do \
-		tar -czvf "$$f-$(VERSION).tar.gz" "$$f" && rm "$$f" ; \
+		mv "$$f" "$(APP_NAME)" ; \
+		tar -czvf "$$f-$(VERSION).tar.gz" "$(APP_NAME)" && rm "$(APP_NAME)" ; \
 	done
