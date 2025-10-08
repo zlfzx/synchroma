@@ -144,3 +144,34 @@ func (s *Schema) CreateColumn(tableName string, sourceColumns []models.Column, d
 
 	return
 }
+
+func (s *Schema) GetIndexes(tableName string) (indexes []models.Index) {
+	sql := "SHOW INDEX FROM " + tableName
+	err := s.DB.Select(&indexes, sql)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return
+}
+
+func (s *Schema) CreateIndex(tableName string, indexes []models.Index) (alterIndex string) {
+	for _, v := range indexes {
+		nonUnique := "UNIQUE"
+		if v.NonUnique == 1 {
+			nonUnique = ""
+		}
+
+		output := fmt.Sprintf(
+			"CREATE %s INDEX %s ON %s (%s);",
+			nonUnique,
+			v.KeyName,
+			tableName,
+			v.ColumnName,
+		)
+
+		alterIndex += output + "\n"
+	}
+
+	return
+}

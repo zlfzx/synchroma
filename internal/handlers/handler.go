@@ -265,9 +265,10 @@ func SyncSchema(cmd *cobra.Command, args []string) {
 
 	fmt.Println(" ")
 
-	// check columns
+	// check columns, indexes, and foreign keys
 	for _, sourceTable := range sourceTables {
 		if targetTable, ok := mapTargetTables[sourceTable.TableName.String]; ok {
+			// check columns
 			diffColumns := make(map[string]models.Column)
 
 			sourceColumns := sourceSchema.GetColumns(sourceTable.TableName.String)
@@ -290,6 +291,33 @@ func SyncSchema(cmd *cobra.Command, args []string) {
 				}
 				fmt.Println()
 			}
+
+			// check indexes
+			diffIndexes := make(map[string]models.Index)
+
+			sourceIndexes := sourceSchema.GetIndexes(sourceTable.TableName.String)
+			for _, sourceIndex := range sourceIndexes {
+				diffIndexes[sourceIndex.KeyName] = sourceIndex
+			}
+
+			targetIndexes := targetSchema.GetIndexes(targetTable.TableName.String)
+			for _, targetIndex := range targetIndexes {
+				delete(diffIndexes, targetIndex.KeyName)
+			}
+
+			if len(diffIndexes) != 0 {
+				output := sourceSchema.CreateIndex(sourceTable.TableName.String, sourceIndexes)
+				outputSql += output + "\n"
+
+				fmt.Println("Found " + fmt.Sprint(len(diffIndexes)) + " different indexes for table: " + sourceTable.TableName.String)
+				for _, v := range diffIndexes {
+					fmt.Println(" [✓] Create index:", v.KeyName)
+				}
+				fmt.Println()
+			}
+
+			// check foreign keys
+			// todo
 		}
 	}
 
