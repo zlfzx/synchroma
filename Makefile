@@ -1,5 +1,5 @@
 APP_NAME := synchroma
-VERSION := 1.0.0
+VERSION := 0.1.0
 BUILD_DIR := bin
 
 # List of supported architectures
