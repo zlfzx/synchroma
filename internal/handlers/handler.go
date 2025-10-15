@@ -4,220 +4,34 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"sync"
+	"synchroma/internal/config"
 	"synchroma/internal/models"
-	"synchroma/internal/services"
+	"synchroma/internal/schema"
+	"synchroma/internal/utils"
 	"time"
 
 	"github.com/adhocore/chin"
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
-func getConfig(cmd *cobra.Command) (sourceCfg, targetCfg models.DataSource) {
-	// load config from flags
-	database, _ := cmd.Flags().GetString("database")
-
-	sourceDbHost, _ := cmd.Flags().GetString("source-db-host")
-	sourceDbPort, _ := cmd.Flags().GetString("source-db-port")
-	sourceDbUser, _ := cmd.Flags().GetString("source-db-user")
-	sourceDbPass, _ := cmd.Flags().GetString("source-db-password")
-	sourceDbName, _ := cmd.Flags().GetString("source-db-name")
-
-	targetDbHost, _ := cmd.Flags().GetString("target-db-host")
-	targetDbPort, _ := cmd.Flags().GetString("target-db-port")
-	targetDbUser, _ := cmd.Flags().GetString("target-db-user")
-	targetDbPass, _ := cmd.Flags().GetString("target-db-password")
-	targetDbName, _ := cmd.Flags().GetString("target-db-name")
-
-	if database != "" || sourceDbHost != "" || sourceDbPort != "" || sourceDbUser != "" || sourceDbPass != "" || sourceDbName != "" || targetDbHost != "" || targetDbPort != "" || targetDbUser != "" || targetDbPass != "" || targetDbName != "" {
-		sourceCfg = models.DataSource{
-			Database: database,
-			Host:     sourceDbHost,
-			Port:     sourceDbPort,
-			User:     sourceDbUser,
-			Password: sourceDbPass,
-			DBName:   sourceDbName,
-		}
-
-		targetCfg = models.DataSource{
-			Database: database,
-			Host:     targetDbHost,
-			Port:     targetDbPort,
-			User:     targetDbUser,
-			Password: targetDbPass,
-			DBName:   targetDbName,
-		}
-
-		return
-	}
-
-	// home directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	// check if init flag is set
-	initConfig, _ := cmd.Flags().GetBool("init")
-	if initConfig {
-		sourceCfg, targetCfg = inputConfig(home)
-		return
-	}
-
-	// load config from .synchroma file
-	err = godotenv.Load(home + "/.synchroma")
-	if err != nil {
-		// input config if .synchroma file not found
-		sourceCfg, targetCfg = inputConfig(home)
-		return
-	}
-
-	sourceCfg = models.DataSource{
-		Database: os.Getenv("DATABASE"),
-		Host:     os.Getenv("SOURCE_DB_HOST"),
-		Port:     os.Getenv("SOURCE_DB_PORT"),
-		User:     os.Getenv("SOURCE_DB_USER"),
-		Password: os.Getenv("SOURCE_DB_PASSWORD"),
-		DBName:   os.Getenv("SOURCE_DB_NAME"),
-	}
-
-	targetCfg = models.DataSource{
-		Database: os.Getenv("DATABASE"),
-		Host:     os.Getenv("TARGET_DB_HOST"),
-		Port:     os.Getenv("TARGET_DB_PORT"),
-		User:     os.Getenv("TARGET_DB_USER"),
-		Password: os.Getenv("TARGET_DB_PASSWORD"),
-		DBName:   os.Getenv("TARGET_DB_NAME"),
-	}
-
-	return
-}
-
-func inputConfig(homeDir string) (sourceCfg, targetCfg models.DataSource) {
-	var database,
-		sourceDbHost,
-		sourceDbPort,
-		sourceDbUser,
-		sourceDbPass,
-		sourceDbName,
-		targetDbHost,
-		targetDbPort,
-		targetDbUser,
-		targetDbPass,
-		targetDbName,
-		saveConfig string
-
-	fmt.Print("Please provide the database type (mysql): ")
-	fmt.Scan(&database)
-
-	fmt.Println("Please provide the source database connection details")
-
-	fmt.Print("- host: ")
-	fmt.Scan(&sourceDbHost)
-
-	fmt.Print("- port: ")
-	fmt.Scan(&sourceDbPort)
-
-	fmt.Print("- user: ")
-	fmt.Scan(&sourceDbUser)
-
-	fmt.Print("- password: ")
-	fmt.Scan(&sourceDbPass)
-
-	fmt.Print("- database name: ")
-	fmt.Scan(&sourceDbName)
-
-	fmt.Println("Please provide the target database connection details")
-
-	fmt.Print("- host: ")
-	fmt.Scan(&targetDbHost)
-
-	fmt.Print("- port: ")
-	fmt.Scan(&targetDbPort)
-
-	fmt.Print("- user: ")
-	fmt.Scan(&targetDbUser)
-
-	fmt.Print("- password: ")
-	fmt.Scan(&targetDbPass)
-
-	fmt.Print("- database name: ")
-	fmt.Scan(&targetDbName)
-
-	fmt.Println()
-
-	fmt.Print("Do you want to save this configuration? (y/N): ")
-	fmt.Scan(&saveConfig)
-
-	sourceCfg = models.DataSource{
-		Database: database,
-		Host:     sourceDbHost,
-		Port:     sourceDbPort,
-		User:     sourceDbUser,
-		Password: sourceDbPass,
-		DBName:   sourceDbName,
-	}
-
-	targetCfg = models.DataSource{
-		Database: database,
-		Host:     targetDbHost,
-		Port:     targetDbPort,
-		User:     targetDbUser,
-		Password: targetDbPass,
-		DBName:   targetDbName,
-	}
-
-	if strings.ToLower(saveConfig) != "y" {
-		return
-	}
-
-	writeConfig := map[string]string{
-		"DATABASE":           sourceCfg.Database,
-		"SOURCE_DB_HOST":     sourceCfg.Host,
-		"SOURCE_DB_PORT":     sourceCfg.Port,
-		"SOURCE_DB_USER":     sourceCfg.User,
-		"SOURCE_DB_PASSWORD": sourceCfg.Password,
-		"SOURCE_DB_NAME":     sourceCfg.DBName,
-		"TARGET_DB_HOST":     targetCfg.Host,
-		"TARGET_DB_PORT":     targetCfg.Port,
-		"TARGET_DB_USER":     targetCfg.User,
-		"TARGET_DB_PASSWORD": targetCfg.Password,
-		"TARGET_DB_NAME":     targetCfg.DBName,
-	}
-
-	env, err := godotenv.Marshal(writeConfig)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	writeConfig, err = godotenv.Unmarshal(env)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	godotenv.Write(writeConfig, homeDir+"/.synchroma")
-
-	fmt.Println("Configuration saved to ~/.synchroma")
-	fmt.Println()
-
-	return
-}
-
 func SyncSchema(cmd *cobra.Command, args []string) {
+	// start time
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		fmt.Printf("Execution time: %s\n", elapsed)
+	}()
+
 	// init config
-	sourceCfg, targetCfg := getConfig(cmd)
+	sourceCfg, targetCfg := config.GetConfig(cmd)
 
 	var wg sync.WaitGroup
 	s := chin.New().WithWait(&wg)
 	go s.Start()
 
 	// init source schema
-	sourceSchema := services.InitSchema(sourceCfg)
+	sourceSchema := schema.InitSchema(sourceCfg)
 	defer sourceSchema.DB.Close()
 	fmt.Println("Connected to source database:")
 	fmt.Println(" - Host:", sourceCfg.Host)
@@ -225,101 +39,62 @@ func SyncSchema(cmd *cobra.Command, args []string) {
 	fmt.Println(" ")
 
 	// init target schema
-	targetSchema := services.InitSchema(targetCfg)
+	targetSchema := schema.InitSchema(targetCfg)
 	defer targetSchema.DB.Close()
 	fmt.Println("Connected to target database:")
 	fmt.Println(" - Host:", targetCfg.Host)
 	fmt.Println(" - Database:", targetCfg.DBName)
 	fmt.Println(" ")
 
-	outputSql := outputSQL()
+	outputSql := outputSQL(sourceCfg, targetCfg)
+	// disable foreign key checks
+	outputSql += "SET FOREIGN_KEY_CHECKS=0;\n\n"
 
 	// check tables
-	diffTables := make(map[string]models.Table)
-
-	sourceTables := sourceSchema.GetTables()
-	for _, sourceTable := range sourceTables {
-		diffTables[sourceTable.TableName.String] = sourceTable
+	tableDependencies := sourceSchema.GetTableDependencies()
+	tables := []string{}
+	for _, t := range sourceSchema.GetTables() {
+		tables = append(tables, t.TableName.String)
 	}
 
-	targetTables := targetSchema.GetTables()
-	mapTargetTables := make(map[string]models.Table)
-	for _, targetTable := range targetTables {
-		delete(diffTables, targetTable.TableName.String)
-		mapTargetTables[targetTable.TableName.String] = targetTable
+	// build table index to maintain stable order
+	tableIndex := make(map[string]int)
+	for i, table := range tables {
+		tableIndex[table] = i
 	}
 
-	if len(diffTables) != 0 {
-		fmt.Println("Found " + fmt.Sprint(len(diffTables)) + " different tables")
+	// topological sort tables based on foreign key dependencies
+	graph := utils.BuildDependencyGraph(tables, tableDependencies)
+	orderedTables := utils.TopologicalSort(graph, tableIndex)
+	fmt.Println("Processing tables in order to respect foreign key dependencies...")
 
-		for _, v := range diffTables {
-			fmt.Println(" [✓] Create table:", v.TableName.String)
+	targetTables := make(map[string]models.Table)
+	for _, targetTable := range targetSchema.GetTables() {
+		targetTables[targetTable.TableName.String] = targetTable
+	}
 
-			output := sourceSchema.CreateTable(v.TableName.String)
-
+	for _, tableName := range orderedTables {
+		if _, exists := targetTables[tableName]; !exists {
+			// create table if not exists
+			outputSql += "\n-- Table: " + tableName + "\n"
+			output := sourceSchema.CreateTable(tableName)
 			outputSql += output + "\n\n"
-		}
-	} else {
-		fmt.Println("No different tables found")
-	}
 
-	fmt.Println(" ")
+			fmt.Println(" [✓] Create table:", tableName)
+		} else {
+			// compare columns
+			outputSql += compareColumns(&sourceSchema, &targetSchema, tableName)
 
-	// check columns, indexes, and foreign keys
-	for _, sourceTable := range sourceTables {
-		if targetTable, ok := mapTargetTables[sourceTable.TableName.String]; ok {
-			// check columns
-			diffColumns := make(map[string]models.Column)
+			// compare indexes
+			outputSql += compareIndexes(&sourceSchema, &targetSchema, tableName)
 
-			sourceColumns := sourceSchema.GetColumns(sourceTable.TableName.String)
-			for _, sourceColumn := range sourceColumns {
-				diffColumns[sourceColumn.ColumnName.String] = sourceColumn
-			}
-
-			targetColumns := targetSchema.GetColumns(targetTable.TableName.String)
-			for _, targetColumn := range targetColumns {
-				delete(diffColumns, targetColumn.ColumnName.String)
-			}
-
-			if len(diffColumns) != 0 {
-				output := sourceSchema.CreateColumn(sourceTable.TableName.String, sourceColumns, diffColumns)
-				outputSql += output + "\n"
-
-				fmt.Println("Found " + fmt.Sprint(len(diffColumns)) + " different columns for table: " + sourceTable.TableName.String)
-				for _, v := range diffColumns {
-					fmt.Println(" [✓] Create column:", v.ColumnName.String)
-				}
-				fmt.Println()
-			}
-
-			// check indexes
-			diffIndexes := make(map[string]models.Index)
-
-			sourceIndexes := sourceSchema.GetIndexes(sourceTable.TableName.String)
-			for _, sourceIndex := range sourceIndexes {
-				diffIndexes[sourceIndex.KeyName] = sourceIndex
-			}
-
-			targetIndexes := targetSchema.GetIndexes(targetTable.TableName.String)
-			for _, targetIndex := range targetIndexes {
-				delete(diffIndexes, targetIndex.KeyName)
-			}
-
-			if len(diffIndexes) != 0 {
-				output := sourceSchema.CreateIndex(sourceTable.TableName.String, sourceIndexes)
-				outputSql += output + "\n"
-
-				fmt.Println("Found " + fmt.Sprint(len(diffIndexes)) + " different indexes for table: " + sourceTable.TableName.String)
-				for _, v := range diffIndexes {
-					fmt.Println(" [✓] Create index:", v.KeyName)
-				}
-				fmt.Println()
-			}
-
-			// check foreign keys
-			// todo
+			// compare foreign keys
+			outputSql += compareForeignKeys(&sourceSchema, &targetSchema, tableName)
 		}
 	}
+
+	// drop foreign key checks at the end of the sql file
+	outputSql += "\nSET FOREIGN_KEY_CHECKS=1;\n"
 
 	// filename
 	filename := sourceCfg.DBName + "_to_" + targetCfg.DBName + ".sql"
@@ -347,15 +122,141 @@ func SyncSchema(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	fmt.Println(" ")
 	fmt.Println("Success!\nSQL file has been generated at " + pathFile)
 
+	// cleanup
+	sourceSchema.Close()
+	targetSchema.Close()
+
+	// stop chin
 	s.Stop()
 	wg.Wait()
 }
 
-func outputSQL() (outputSql string) {
+func compareColumns(sourceSchema, targetSchema *schema.Schema, tableName string) string {
+	outputSql := ""
+
+	sourceColumns := sourceSchema.GetColumns(tableName)
+	sourceMapColumns := make(map[string]models.Column)
+	for _, sourceColumn := range sourceColumns {
+		sourceMapColumns[sourceColumn.ColumnName.String] = sourceColumn
+	}
+
+	targetColumns := targetSchema.GetColumns(tableName)
+	targetMapColumns := make(map[string]models.Column)
+	for _, targetColumn := range targetColumns {
+		targetMapColumns[targetColumn.ColumnName.String] = targetColumn
+	}
+
+	// compare columns
+	for name, col := range sourceMapColumns {
+		// add columns
+		if _, ok := targetMapColumns[name]; !ok {
+			output := sourceSchema.CreateAddColumn(sourceColumns, col)
+			outputSql += output + "\n"
+
+			fmt.Printf(" [✓] Add column: %s to table: %s\n", name, tableName)
+		}
+
+		// modify columns
+		if targetCol, ok := targetMapColumns[name]; ok && !utils.IsSameColumn(col, targetCol) {
+			if col != targetCol {
+				output := sourceSchema.CreateModifyColumn(sourceColumns, col)
+				outputSql += output + "\n"
+
+				fmt.Printf(" [✓] Modify column: %s in table: %s\n", name, tableName)
+			}
+		}
+	}
+
+	// drop columns
+	for name, col := range targetMapColumns {
+		if _, ok := sourceMapColumns[name]; !ok {
+			output := sourceSchema.CreateDropColumn(tableName, col.ColumnName.String)
+			outputSql += output + "\n"
+
+			fmt.Printf(" [✓] Drop column: %s from table: %s\n", name, tableName)
+		}
+	}
+
+	// if no changes, clear the outputSql for this table
+	if outputSql != "" {
+		outputSql = "\n-- Table: " + tableName + "\n" + outputSql + "\n"
+	}
+
+	return outputSql
+}
+
+func compareIndexes(sourceSchema, targetSchema *schema.Schema, tableName string) string {
+	outputSql := ""
+
+	sourceIndexes := sourceSchema.GetIndexes(tableName)
+	targetIndexes := targetSchema.GetIndexes(tableName)
+
+	targetMap := make(map[string]models.IndexInfo)
+	for _, idx := range targetIndexes {
+		key := idx.IndexName + "|" + idx.Columns
+		targetMap[key] = idx
+	}
+
+	for _, idx := range sourceIndexes {
+		key := idx.IndexName + "|" + idx.Columns
+		if _, ok := targetMap[key]; !ok {
+			output := sourceSchema.CreateAddIndex(idx)
+			outputSql += output + "\n"
+
+			fmt.Printf(" [✓] Create index: %s on table: %s\n", idx.IndexName, tableName)
+		}
+	}
+
+	if outputSql != "" {
+		outputSql = "\n-- Table: " + tableName + "\n" + outputSql + "\n"
+	}
+
+	return outputSql
+}
+
+func compareForeignKeys(sourceSchema, targetSchema *schema.Schema, tableName string) string {
+	outputSql := ""
+
+	sourceFK := sourceSchema.GetForeignKeys(tableName)
+	targetFK := targetSchema.GetForeignKeys(tableName)
+
+	targetFKMap := make(map[string]models.ForeignKey)
+	for _, fk := range targetFK {
+		key := fk.ConstraintName + "|" + fk.ColumnName + "|" + fk.ReferencedTable
+		targetFKMap[key] = fk
+	}
+
+	for _, fk := range sourceFK {
+		key := fk.ConstraintName + "|" + fk.ColumnName + "|" + fk.ReferencedTable
+		if _, ok := targetFKMap[key]; !ok {
+			output := sourceSchema.CreateForeignKey(fk)
+			outputSql += output + "\n"
+
+			fmt.Printf(" [✓] Add foreign key: %s on table: %s\n", fk.ConstraintName, tableName)
+		}
+	}
+
+	if outputSql != "" {
+		outputSql = "\n-- Table: " + tableName + "\n" + outputSql + "\n"
+	}
+
+	return outputSql
+}
+
+func outputSQL(sourceCfg, targetCfg models.DataSource) (outputSql string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	outputSql += "-- Generate from Synchroma at " + timestamp + "\n\n"
+	outputSql += "-- Generate from Synchroma at " + timestamp + "\n"
+	outputSql += "-- Please review the SQL before applying it to the target database.\n"
+	outputSql += "-- Source: \n"
+	outputSql += "--   Host: " + sourceCfg.Host + "\n"
+	outputSql += "--   Database: " + sourceCfg.DBName + "\n"
+	outputSql += "-- Target: \n"
+	outputSql += "--   Host: " + targetCfg.Host + "\n"
+	outputSql += "--   Database: " + targetCfg.DBName + "\n"
+	outputSql += "\n\n"
 
 	return
 }

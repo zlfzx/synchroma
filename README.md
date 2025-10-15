@@ -40,8 +40,8 @@ synchroma \
 - [x] Support MySQL
 - [x] Compare table schema
 - [x] Compare column schema
-- [ ] Compare index schema
-- [ ] Compare foreign key schema
+- [x] Compare index schema
+- [x] Compare foreign key schema
 - [ ] Compare trigger schema
 - [ ] Compare view schema
 - [ ] Support PostgreSQL and SQLite

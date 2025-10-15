@@ -26,3 +26,20 @@ type Column struct {
 	GenerationExpression   sql.NullString `db:"GENERATION_EXPRESSION"`
 	SrsId                  sql.NullInt64  `db:"SRS_ID"`
 }
+
+type ForeignKey struct {
+	ConstraintName   string `db:"CONSTRAINT_NAME"`
+	TableName        string `db:"TABLE_NAME"`
+	ColumnName       string `db:"COLUMN_NAME"`
+	ReferencedTable  string `db:"REFERENCED_TABLE_NAME"`
+	ReferencedColumn string `db:"REFERENCED_COLUMN_NAME"`
+	UpdateRule       string `db:"UPDATE_RULE"`
+	DeleteRule       string `db:"DELETE_RULE"`
+}
+
+type IndexInfo struct {
+	TableName string `db:"TABLE_NAME"`
+	IndexName string `db:"INDEX_NAME"`
+	Columns   string `db:"COLUMNS"`
+	NonUnique int    `db:"NON_UNIQUE"`
+}

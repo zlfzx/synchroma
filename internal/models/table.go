@@ -25,3 +25,13 @@ type Table struct {
 	CreateOptions  sql.NullString `db:"CREATE_OPTIONS"`
 	TableComment   sql.NullString `db:"TABLE_COMMENT"`
 }
+
+type TableDependency struct {
+	TableName       sql.NullString `db:"TABLE_NAME"`
+	ReferencedTable sql.NullString `db:"REFERENCED_TABLE_NAME"`
+}
+
+type CreateTable struct {
+	Table       string `db:"Table"`
+	CreateTable string `db:"Create Table"`
+}
