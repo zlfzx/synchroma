@@ -1,5 +1,5 @@
 APP_NAME := synchroma
-VERSION := 1.0.0
+VERSION := 0.1.0
 BUILD_DIR := bin
 
 # List of supported architectures
@@ -25,7 +25,8 @@ build:
 	done
 
 # Package the application
-package: build
+package: clean build
 	@cd $(BUILD_DIR) && for f in *; do \
-		tar -czvf "$$f-$(VERSION).tar.gz" "$$f" && rm "$$f" ; \
+		mv "$$f" "$(APP_NAME)" ; \
+		tar -czvf "$$f-$(VERSION).tar.gz" "$(APP_NAME)" && rm "$(APP_NAME)" ; \
 	done
