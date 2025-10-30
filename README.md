@@ -44,5 +44,5 @@ synchroma \
 - [x] Compare foreign key schema
 - [ ] Compare trigger schema
 - [ ] Compare view schema
-- [ ] Support PostgreSQL and SQLite
+- [ ] Support PostgreSQL
 - [ ] Add more documentation
