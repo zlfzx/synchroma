@@ -1,5 +1,5 @@
 APP_NAME := synchroma
-VERSION := 0.1.0
+VERSION := 0.2.0
 BUILD_DIR := bin
 
 # List of supported architectures
@@ -21,7 +21,7 @@ build:
 		OUTPUT=$(BUILD_DIR)/$(APP_NAME)-$$GOOS-$$GOARCH ; \
 		if [ $$GOOS = "windows" ]; then OUTPUT=$$OUTPUT.exe; fi ; \
 		echo "Building for $$GOOS/$$GOARCH..." ; \
-		GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags="-s -w" -o $$OUTPUT . ; \
+		GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags="-s -w -X synchroma/cmd.Version=$(VERSION)" -o $$OUTPUT . ; \
 	done
 
 # Package the application
