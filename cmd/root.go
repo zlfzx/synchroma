@@ -45,6 +45,10 @@ func init() {
 	rootCmd.Flags().String("target-db-name", "", "Target database name")
 
 	rootCmd.Flags().BoolP("init", "i", false, "Initialize configuration file")
+	rootCmd.Flags().Bool("dry-run", false, "Print SQL to stdout without saving")
+	rootCmd.Flags().Bool("apply", false, "Execute the generated SQL directly on the target database")
+	rootCmd.Flags().Bool("drop-tables", false, "Drop tables in target that do not exist in source")
+	rootCmd.Flags().String("output-file", "", "Custom output SQL filename")
 }
 
 func Execute() {

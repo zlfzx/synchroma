@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var Version = "dev"
+
 func init() {
 	rootCmd.AddCommand(versionCmd)
 }
@@ -15,6 +17,6 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of Synchroma",
 	Long:  `All software has versions. This is Synchroma's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Synchroma v0.1.0")
+		fmt.Printf("Synchroma v%s\n", Version)
 	},
 }

@@ -2,29 +2,24 @@ package schema
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"synchroma/internal/models"
 	"synchroma/internal/utils"
 
-	"log"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
 
-type Schema struct {
+type MySQLSchema struct {
 	DB     *sqlx.DB
 	DBName string
 	Tables []models.Table
 }
 
-func InitSchema(config models.DataSource) Schema {
-
+func InitSchema(config models.DataSource) (SchemaProvider, error) {
 	if config.Database == "" || config.Database != "mysql" {
-		fmt.Println("database not supported")
-		os.Exit(1)
+		return nil, fmt.Errorf("database %s not supported", config.Database)
 	}
 
 	datasource := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
@@ -37,16 +32,16 @@ func InitSchema(config models.DataSource) Schema {
 
 	DBSource, err := sqlx.Connect(config.Database, datasource)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	return Schema{
+	return &MySQLSchema{
 		DB:     DBSource,
 		DBName: config.DBName,
-	}
+	}, nil
 }
 
-func (s *Schema) GetTableDependencies() (tableDependencies map[string][]string) {
+func (s *MySQLSchema) GetTableDependencies() (map[string][]string, error) {
 	sql := `
 		SELECT 
 			TABLE_NAME, REFERENCED_TABLE_NAME
@@ -60,10 +55,10 @@ func (s *Schema) GetTableDependencies() (tableDependencies map[string][]string) 
 	var dependencies []models.TableDependency
 	err := s.DB.Select(&dependencies, sql, s.DBName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get table dependencies: %w", err)
 	}
 
-	tableDependencies = make(map[string][]string)
+	tableDependencies := make(map[string][]string)
 	for _, dep := range dependencies {
 		if _, ok := tableDependencies[dep.TableName.String]; !ok {
 			tableDependencies[dep.TableName.String] = []string{}
@@ -76,40 +71,45 @@ func (s *Schema) GetTableDependencies() (tableDependencies map[string][]string) 
 	}
 
 	// ensure all tables are in the map
-	for _, t := range s.GetTables() {
+	tables, err := s.GetTables()
+	if err != nil {
+		return nil, err
+	}
+	
+	for _, t := range tables {
 		if _, ok := tableDependencies[t.TableName.String]; !ok {
 			tableDependencies[t.TableName.String] = []string{}
 		}
 	}
 
-	return
+	return tableDependencies, nil
 }
 
-func (s *Schema) GetTables() (tables []models.Table) {
+func (s *MySQLSchema) GetTables() ([]models.Table, error) {
 	if s.Tables != nil {
-		return s.Tables
+		return s.Tables, nil
 	}
 
 	sql := "SELECT * FROM information_schema.tables WHERE table_schema = ?"
+	var tables []models.Table
 	err := s.DB.Select(&tables, sql, s.DBName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get tables: %w", err)
 	}
 
 	s.Tables = tables
-
-	return
+	return tables, nil
 }
 
-func (s *Schema) CreateTable(tableName string) (createTable string) {
+func (s *MySQLSchema) CreateTable(tableName string) (string, error) {
 	var ddl models.CreateTable
 
-	sql := "SHOW CREATE TABLE " + tableName
+	sql := "SHOW CREATE TABLE " + utils.EscapeIdentifier(tableName)
 	if err := s.DB.Get(&ddl, sql); err != nil {
-		log.Fatal(err)
+		return "", fmt.Errorf("failed to show create table %s: %w", tableName, err)
 	}
 
-	createTable = ddl.CreateTable
+	createTable := ddl.CreateTable
 
 	// remove auto increment
 	re := regexp.MustCompile(` AUTO_INCREMENT=\d+`)
@@ -117,19 +117,20 @@ func (s *Schema) CreateTable(tableName string) (createTable string) {
 
 	createTable += ";"
 
-	return
+	return createTable, nil
 }
 
-func (s *Schema) GetColumns(tableName string) (columns []models.Column) {
-	sql := "SELECT * FROM information_schema.columns WHERE table_schema = ? AND table_name = ?"
+func (s *MySQLSchema) GetColumns(tableName string) ([]models.Column, error) {
+	sql := "SELECT * FROM information_schema.columns WHERE table_schema = ? AND table_name = ? ORDER BY ORDINAL_POSITION"
+	var columns []models.Column
 	if err := s.DB.Select(&columns, sql, s.DBName, tableName); err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get columns for table %s: %w", tableName, err)
 	}
 
-	return
+	return columns, nil
 }
 
-func (s *Schema) CreateAddColumn(columns []models.Column, col models.Column) string {
+func (s *MySQLSchema) buildColumnSQL(action string, columns []models.Column, col models.Column) string {
 	extra := strings.Replace(col.Extra.String, "DEFAULT_GENERATED", "", -1)
 	nullable := "NOT NULL"
 	if col.IsNullable == "YES" {
@@ -153,13 +154,14 @@ func (s *Schema) CreateAddColumn(columns []models.Column, col models.Column) str
 	position := "FIRST"
 	if col.OrdinalPosition > 1 {
 		afterColumn := columns[col.OrdinalPosition-2].ColumnName.String
-		position = "AFTER " + afterColumn
+		position = "AFTER " + utils.EscapeIdentifier(afterColumn)
 	}
 
 	sql := fmt.Sprintf(
-		"ALTER TABLE %s ADD COLUMN %s %s %s %s %s %s %s;",
-		col.TableName.String,
-		col.ColumnName.String,
+		"ALTER TABLE %s %s COLUMN %s %s %s %s %s %s %s;",
+		utils.EscapeIdentifier(col.TableName.String),
+		action,
+		utils.EscapeIdentifier(col.ColumnName.String),
 		col.ColumnType,
 		extra,
 		nullable,
@@ -171,59 +173,25 @@ func (s *Schema) CreateAddColumn(columns []models.Column, col models.Column) str
 	return sql
 }
 
-func (s *Schema) CreateModifyColumn(columns []models.Column, col models.Column) string {
-	extra := strings.Replace(col.Extra.String, "DEFAULT_GENERATED", "", -1)
-	nullable := "NOT NULL"
-	if col.IsNullable == "YES" {
-		nullable = "NULL"
-	}
+func (s *MySQLSchema) CreateAddColumn(columns []models.Column, col models.Column) string {
+	return s.buildColumnSQL("ADD", columns, col)
+}
 
-	defaultValue := ""
-	if col.ColumnDefault.Valid {
-		if utils.IsNumericType(col.DataType.String) || col.ColumnDefault.String == "CURRENT_TIMESTAMP" {
-			defaultValue = "DEFAULT " + col.ColumnDefault.String
-		} else {
-			defaultValue = "DEFAULT '" + col.ColumnDefault.String + "'"
-		}
-	}
+func (s *MySQLSchema) CreateModifyColumn(columns []models.Column, col models.Column) string {
+	return s.buildColumnSQL("MODIFY", columns, col)
+}
 
-	comment := ""
-	if col.ColumnComment.Valid {
-		comment = "COMMENT '" + col.ColumnComment.String + "'"
-	}
-
-	position := "FIRST"
-	if col.OrdinalPosition > 1 {
-		afterColumn := columns[col.OrdinalPosition-2].ColumnName.String
-		position = "AFTER " + afterColumn
-	}
-
+func (s *MySQLSchema) CreateDropColumn(tableName, columnName string) string {
 	sql := fmt.Sprintf(
-		"ALTER TABLE %s MODIFY COLUMN %s %s %s %s %s %s %s;",
-		col.TableName.String,
-		col.ColumnName.String,
-		col.ColumnType,
-		extra,
-		nullable,
-		defaultValue,
-		comment,
-		position,
+		"ALTER TABLE %s DROP COLUMN %s;",
+		utils.EscapeIdentifier(tableName),
+		utils.EscapeIdentifier(columnName),
 	)
 
 	return sql
 }
 
-func (s *Schema) CreateDropColumn(tableName, columnName string) string {
-	sql := fmt.Sprintf(
-		"ALTER TABLE %s DROP COLUMN `%s`;",
-		tableName,
-		columnName,
-	)
-
-	return sql
-}
-
-func (s *Schema) GetIndexes(tableName string) (indexes []models.IndexInfo) {
+func (s *MySQLSchema) GetIndexes(tableName string) ([]models.IndexInfo, error) {
 	sql := `
 		SELECT
 			TABLE_NAME,
@@ -235,15 +203,16 @@ func (s *Schema) GetIndexes(tableName string) (indexes []models.IndexInfo) {
 		GROUP BY TABLE_NAME, INDEX_NAME, NON_UNIQUE
 	`
 
+	var indexes []models.IndexInfo
 	err := s.DB.Select(&indexes, sql, s.DBName, tableName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get indexes for table %s: %w", tableName, err)
 	}
 
-	return
+	return indexes, nil
 }
 
-func (s *Schema) CreateAddIndex(index models.IndexInfo) string {
+func (s *MySQLSchema) CreateAddIndex(index models.IndexInfo) string {
 	indexType := "INDEX"
 	if index.IndexName == "PRIMARY" {
 		indexType = "PRIMARY KEY"
@@ -251,18 +220,33 @@ func (s *Schema) CreateAddIndex(index models.IndexInfo) string {
 		indexType = "UNIQUE INDEX"
 	}
 
+	cols := strings.Split(index.Columns, ",")
+	for i, c := range cols {
+		cols[i] = utils.EscapeIdentifier(c)
+	}
+	escapedCols := strings.Join(cols, ",")
+
 	sql := fmt.Sprintf(
 		"ALTER TABLE %s ADD %s %s (%s);",
-		index.TableName,
+		utils.EscapeIdentifier(index.TableName),
 		indexType,
 		utils.EscapeIdentifier(index.IndexName),
-		index.Columns,
+		escapedCols,
 	)
 
 	return sql
 }
 
-func (s *Schema) GetForeignKeys(tableName string) (foreignKeys []models.ForeignKey) {
+func (s *MySQLSchema) CreateDropIndex(tableName, indexName string) string {
+	sql := fmt.Sprintf(
+		"ALTER TABLE %s DROP INDEX %s;",
+		utils.EscapeIdentifier(tableName),
+		utils.EscapeIdentifier(indexName),
+	)
+	return sql
+}
+
+func (s *MySQLSchema) GetForeignKeys(tableName string) ([]models.ForeignKey, error) {
 	sql := `
 		SELECT
 			k.CONSTRAINT_NAME,
@@ -282,22 +266,23 @@ func (s *Schema) GetForeignKeys(tableName string) (foreignKeys []models.ForeignK
 		ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION
 	`
 
+	var foreignKeys []models.ForeignKey
 	err := s.DB.Select(&foreignKeys, sql, s.DBName, tableName)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to get foreign keys for table %s: %w", tableName, err)
 	}
 
-	return
+	return foreignKeys, nil
 }
 
-func (s *Schema) CreateForeignKey(fk models.ForeignKey) string {
+func (s *MySQLSchema) CreateForeignKey(fk models.ForeignKey) string {
 	sql := fmt.Sprintf(
-		"ALTER TABLE %s ADD CONSTRAINT `%s` FOREIGN KEY (`%s`) REFERENCES `%s`(`%s`) ON UPDATE %s ON DELETE %s;",
-		fk.TableName,
-		fk.ConstraintName,
-		fk.ColumnName,
-		fk.ReferencedTable,
-		fk.ReferencedColumn,
+		"ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s) ON UPDATE %s ON DELETE %s;",
+		utils.EscapeIdentifier(fk.TableName),
+		utils.EscapeIdentifier(fk.ConstraintName),
+		utils.EscapeIdentifier(fk.ColumnName),
+		utils.EscapeIdentifier(fk.ReferencedTable),
+		utils.EscapeIdentifier(fk.ReferencedColumn),
 		fk.UpdateRule,
 		fk.DeleteRule,
 	)
@@ -305,8 +290,20 @@ func (s *Schema) CreateForeignKey(fk models.ForeignKey) string {
 	return sql
 }
 
-func (s *Schema) Close() {
-	if err := s.DB.Close(); err != nil {
-		log.Fatal(err)
-	}
+func (s *MySQLSchema) CreateDropForeignKey(tableName, constraintName string) string {
+	sql := fmt.Sprintf(
+		"ALTER TABLE %s DROP FOREIGN KEY %s;",
+		utils.EscapeIdentifier(tableName),
+		utils.EscapeIdentifier(constraintName),
+	)
+	return sql
+}
+
+func (s *MySQLSchema) CreateDropTable(tableName string) string {
+	sql := fmt.Sprintf("DROP TABLE %s;", utils.EscapeIdentifier(tableName))
+	return sql
+}
+
+func (s *MySQLSchema) Close() error {
+	return s.DB.Close()
 }
