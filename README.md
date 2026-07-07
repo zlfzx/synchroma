@@ -3,7 +3,7 @@ Synchroma is a tool to synchronize database schema from source to target. It wil
 
 ### Features
 - Compare schema from source and target,
-- Generate SQL script to sync schema from source to target,
+- Generate SQL script to sync schema from source to target (including Tables, Columns, Indexes, Foreign Keys, Views, Triggers, and Routines),
 - Support MySQL, ~~PostgreSQL, and SQLite~~
 
 ### Installation
@@ -36,13 +36,23 @@ synchroma \
 
 ```
 
+You can also use the following flags to control the sync process:
+```bash
+# Preview the generated SQL script without applying it
+synchroma --dry-run
+
+# Directly apply the generated SQL script to the target database
+synchroma --apply
+```
+
 ### TODO
 - [x] Support MySQL
 - [x] Compare table schema
 - [x] Compare column schema
 - [x] Compare index schema
 - [x] Compare foreign key schema
-- [ ] Compare trigger schema
-- [ ] Compare view schema
+- [x] Compare trigger schema
+- [x] Compare view schema
+- [x] Compare routine schema
 - [ ] Support PostgreSQL
 - [ ] Add more documentation

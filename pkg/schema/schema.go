@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"synchroma/internal/models"
-	"synchroma/internal/utils"
+	"synchroma/pkg/models"
+	"synchroma/pkg/utils"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -246,6 +246,14 @@ func (s *MySQLSchema) CreateDropIndex(tableName, indexName string) string {
 	return sql
 }
 
+func (s *MySQLSchema) CreateAlterTableProperties(tableName string, props []string) string {
+	if len(props) == 0 {
+		return ""
+	}
+	sql := fmt.Sprintf("ALTER TABLE %s %s;", utils.EscapeIdentifier(tableName), strings.Join(props, " "))
+	return sql
+}
+
 func (s *MySQLSchema) GetForeignKeys(tableName string) ([]models.ForeignKey, error) {
 	sql := `
 		SELECT
@@ -302,6 +310,81 @@ func (s *MySQLSchema) CreateDropForeignKey(tableName, constraintName string) str
 func (s *MySQLSchema) CreateDropTable(tableName string) string {
 	sql := fmt.Sprintf("DROP TABLE %s;", utils.EscapeIdentifier(tableName))
 	return sql
+}
+
+func (s *MySQLSchema) GetViews() ([]models.SchemaObject, error) {
+	sql := "SELECT TABLE_NAME AS NAME, 'VIEW' AS TYPE FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?"
+	var objs []models.SchemaObject
+	if err := s.DB.Select(&objs, sql, s.DBName); err != nil {
+		return nil, err
+	}
+	return objs, nil
+}
+
+func (s *MySQLSchema) GetTriggers() ([]models.SchemaObject, error) {
+	sql := "SELECT TRIGGER_NAME AS NAME, 'TRIGGER' AS TYPE FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?"
+	var objs []models.SchemaObject
+	if err := s.DB.Select(&objs, sql, s.DBName); err != nil {
+		return nil, err
+	}
+	return objs, nil
+}
+
+func (s *MySQLSchema) GetRoutines() ([]models.SchemaObject, error) {
+	sql := "SELECT ROUTINE_NAME AS NAME, ROUTINE_TYPE AS TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?"
+	var objs []models.SchemaObject
+	if err := s.DB.Select(&objs, sql, s.DBName); err != nil {
+		return nil, err
+	}
+	return objs, nil
+}
+
+func (s *MySQLSchema) GetViewDefinition(name string) (string, error) {
+	var cv models.CreateView
+	sql := "SHOW CREATE VIEW " + utils.EscapeIdentifier(name)
+	if err := s.DB.Get(&cv, sql); err != nil {
+		return "", err
+	}
+	return cv.CreateView + ";", nil
+}
+
+func (s *MySQLSchema) GetTriggerDefinition(name string) (string, error) {
+	var ct models.CreateTrigger
+	sql := "SHOW CREATE TRIGGER " + utils.EscapeIdentifier(name)
+	if err := s.DB.Get(&ct, sql); err != nil {
+		return "", err
+	}
+	return ct.SQLOriginalStatement + ";", nil
+}
+
+func (s *MySQLSchema) GetRoutineDefinition(name, routineType string) (string, error) {
+	if routineType == "PROCEDURE" {
+		var cp models.CreateProcedure
+		sql := "SHOW CREATE PROCEDURE " + utils.EscapeIdentifier(name)
+		if err := s.DB.Get(&cp, sql); err != nil {
+			return "", err
+		}
+		return cp.CreateProcedure + ";", nil
+	} else {
+		var cf models.CreateFunction
+		sql := "SHOW CREATE FUNCTION " + utils.EscapeIdentifier(name)
+		if err := s.DB.Get(&cf, sql); err != nil {
+			return "", err
+		}
+		return cf.CreateFunction + ";", nil
+	}
+}
+
+func (s *MySQLSchema) CreateDropView(name string) string {
+	return fmt.Sprintf("DROP VIEW IF EXISTS %s;", utils.EscapeIdentifier(name))
+}
+
+func (s *MySQLSchema) CreateDropTrigger(name string) string {
+	return fmt.Sprintf("DROP TRIGGER IF EXISTS %s;", utils.EscapeIdentifier(name))
+}
+
+func (s *MySQLSchema) CreateDropRoutine(name, routineType string) string {
+	return fmt.Sprintf("DROP %s IF EXISTS %s;", routineType, utils.EscapeIdentifier(name))
 }
 
 func (s *MySQLSchema) Close() error {

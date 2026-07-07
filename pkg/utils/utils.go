@@ -3,7 +3,7 @@ package utils
 import (
 	"fmt"
 	"strings"
-	"synchroma/internal/models"
+	"synchroma/pkg/models"
 )
 
 func IsSameColumn(a, b models.Column) bool {

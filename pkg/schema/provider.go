@@ -1,6 +1,6 @@
 package schema
 
-import "synchroma/internal/models"
+import "synchroma/pkg/models"
 
 type SchemaProvider interface {
 	GetTableDependencies() (map[string][]string, error)
@@ -15,9 +15,22 @@ type SchemaProvider interface {
 	CreateDropColumn(tableName, columnName string) string
 	CreateAddIndex(index models.IndexInfo) string
 	CreateDropIndex(tableName, indexName string) string
+	CreateAlterTableProperties(tableName string, props []string) string
 	CreateForeignKey(fk models.ForeignKey) string
 	CreateDropForeignKey(tableName, constraintName string) string
 	CreateDropTable(tableName string) string
+
+	GetViews() ([]models.SchemaObject, error)
+	GetTriggers() ([]models.SchemaObject, error)
+	GetRoutines() ([]models.SchemaObject, error)
+
+	GetViewDefinition(name string) (string, error)
+	GetTriggerDefinition(name string) (string, error)
+	GetRoutineDefinition(name, routineType string) (string, error)
+
+	CreateDropView(name string) string
+	CreateDropTrigger(name string) string
+	CreateDropRoutine(name, routineType string) string
 	
 	Close() error
 }
