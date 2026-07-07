@@ -1,24 +1,16 @@
-## Synchroma
-Synchroma is a tool to synchronize database schema from source to target. It will compare the schema and generate a SQL script to sync the schema from source to target.
+# Synchroma
+Synchroma is a tool to synchronize database schemas. It supports MySQL and other databases in the future.
 
-### Features
-- Compare schema from source and target,
-- Generate SQL script to sync schema from source to target (including Tables, Columns, Indexes, Foreign Keys, Views, Triggers, and Routines),
-- Support MySQL, ~~PostgreSQL, and SQLite~~
-
-### Installation
+## Installation
 ```bash
-brew tap zlfzx/xyz
-brew install synchroma
+go install github.com/zlfzx/synchroma@latest
 ```
 
-### Usage
-
-initialize configuration file before sync schema
+## Usage
 ```bash
 synchroma --init
 ```
-configuration file will be created in `~/.synchroma`  
+configuration file will be created in `~/.synchroma.json`  
 or provide configuration parameters directly
 ```bash
 synchroma \
@@ -43,6 +35,61 @@ synchroma --dry-run
 
 # Directly apply the generated SQL script to the target database
 synchroma --apply
+```
+
+## Usage as a Go Library
+Synchroma is fully decoupled and can be imported directly into your Go backend projects (for example, to build an automated migration service).
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	
+	"github.com/zlfzx/synchroma/pkg/core"
+	"github.com/zlfzx/synchroma/pkg/models"
+)
+
+func main() {
+	// 1. Define your Source and Target configurations
+	sourceDb := models.DataSource{
+		Database: "mysql", 
+		Host: "localhost", Port: "3306", 
+		User: "root", Password: "password", DBName: "db_dev",
+	}
+	
+	targetDb := models.DataSource{
+		Database: "mysql", 
+		Host: "remote-server.com", Port: "3306", 
+		User: "admin", Password: "secure_password", DBName: "db_prod",
+	}
+
+	// 2. Setup Synchronization Options
+	opts := core.SyncOptions{
+		SourceCfg:  sourceDb,
+		TargetCfg:  targetDb,
+		DropTables: true, // Set to true to drop tables in target that don't exist in source
+		
+		// Optional: Listen to progress logs directly from the engine
+		OnProgress: func(msg string) {
+			fmt.Println("[Sync Progress] ->", msg)
+		},
+	}
+
+	// 3. Generate the SQL
+	result, err := core.GenerateSyncSQL(opts)
+	if err != nil {
+		log.Fatalf("Synchronization failed: %v", err)
+	}
+
+	// 4. Use the results!
+	fmt.Println("\n--- FINAL SQL SCRIPT ---")
+	fmt.Println(result.SQL)
+	
+	fmt.Printf("\nStatistics: %d tables added, %d modified.\n", 
+		result.Stats.TablesAdded, result.Stats.TablesModified)
+}
 ```
 
 ### TODO
