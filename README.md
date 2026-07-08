@@ -1,5 +1,10 @@
 # Synchroma
-Synchroma is a tool to synchronize database schemas. It supports MySQL and other databases in the future.
+
+**Synchroma** (short for *Synchronize Schema*) is a fast, reliable, and powerful tool designed to **compare and synchronize database schemas** between a source and a target environment. 
+
+Whether you are migrating from development to production or syncing data structures across distributed teams, Synchroma analyzes the differences (Tables, Columns, Indexes, Foreign Keys, Views, Triggers, and Routines) and automatically generates the exact SQL `CREATE`, `ALTER`, and `DROP` scripts needed to make the target database identical to the source.
+
+Currently, it fully supports **MySQL** (with plans to support PostgreSQL and others in the future). It can be used as a standalone CLI tool or imported as a native Go library.
 
 ## Installation
 ```bash
