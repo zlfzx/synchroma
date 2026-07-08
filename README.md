@@ -7,6 +7,14 @@ Whether you are migrating from development to production or syncing data structu
 Currently, it fully supports **MySQL** (with plans to support PostgreSQL and others in the future). It can be used as a standalone CLI tool or imported as a native Go library.
 
 ## Installation
+
+### Using Homebrew (macOS / Linux)
+```bash
+brew tap zlfzx/xyz
+brew install synchroma
+```
+
+### Using Go
 ```bash
 go install github.com/zlfzx/synchroma@latest
 ```
