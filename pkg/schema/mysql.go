@@ -7,7 +7,6 @@ import (
 	"synchroma/pkg/models"
 	"synchroma/pkg/utils"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -15,30 +14,6 @@ type MySQLSchema struct {
 	DB     *sqlx.DB
 	DBName string
 	Tables []models.Table
-}
-
-func InitSchema(config models.DataSource) (SchemaProvider, error) {
-	if config.Database == "" || config.Database != "mysql" {
-		return nil, fmt.Errorf("database %s not supported", config.Database)
-	}
-
-	datasource := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		config.User,
-		config.Password,
-		config.Host,
-		config.Port,
-		config.DBName,
-	)
-
-	DBSource, err := sqlx.Connect(config.Database, datasource)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	return &MySQLSchema{
-		DB:     DBSource,
-		DBName: config.DBName,
-	}, nil
 }
 
 func (s *MySQLSchema) GetTableDependencies() (map[string][]string, error) {
@@ -389,4 +364,12 @@ func (s *MySQLSchema) CreateDropRoutine(name, routineType string) string {
 
 func (s *MySQLSchema) Close() error {
 	return s.DB.Close()
+}
+
+func (s *MySQLSchema) DisableFKChecks() string {
+	return "SET FOREIGN_KEY_CHECKS=0;"
+}
+
+func (s *MySQLSchema) EnableFKChecks() string {
+	return "SET FOREIGN_KEY_CHECKS=1;"
 }

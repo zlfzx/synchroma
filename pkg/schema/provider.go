@@ -31,6 +31,9 @@ type SchemaProvider interface {
 	CreateDropView(name string) string
 	CreateDropTrigger(name string) string
 	CreateDropRoutine(name, routineType string) string
+
+	DisableFKChecks() string
+	EnableFKChecks() string
 	
 	Close() error
 }

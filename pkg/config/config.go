@@ -12,20 +12,31 @@ type Config struct {
 }
 
 type Profile struct {
-	Source models.DataSource `json:"source"`
-	Target models.DataSource `json:"target"`
+	Source        models.DataSource `json:"source"`
+	Target        models.DataSource `json:"target"`
+	ExcludeTables []string          `json:"exclude_tables,omitempty"`
+	IncludeTables []string          `json:"include_tables,omitempty"`
 }
 
-// LoadConfig reads the config file and returns the specified profile.
+// LoadConfig reads the config file and returns the specified profile's source and target.
 func LoadConfig(configPath, profileName string) (models.DataSource, models.DataSource, error) {
+	profile, err := LoadProfile(configPath, profileName)
+	if err != nil {
+		return models.DataSource{}, models.DataSource{}, err
+	}
+	return profile.Source, profile.Target, nil
+}
+
+// LoadProfile reads the config file and returns the full profile struct.
+func LoadProfile(configPath, profileName string) (*Profile, error) {
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		return models.DataSource{}, models.DataSource{}, fmt.Errorf("could not read config file: %v", err)
+		return nil, fmt.Errorf("could not read config file: %v", err)
 	}
 
 	var config Config
 	if err := json.Unmarshal(file, &config); err != nil {
-		return models.DataSource{}, models.DataSource{}, fmt.Errorf("error parsing config file: %v", err)
+		return nil, fmt.Errorf("error parsing config file: %v", err)
 	}
 
 	if profileName == "" {
@@ -34,10 +45,10 @@ func LoadConfig(configPath, profileName string) (models.DataSource, models.DataS
 
 	profile, ok := config.Profiles[profileName]
 	if !ok {
-		return models.DataSource{}, models.DataSource{}, fmt.Errorf("profile '%s' not found in config", profileName)
+		return nil, fmt.Errorf("profile '%s' not found in config", profileName)
 	}
 
-	return profile.Source, profile.Target, nil
+	return &profile, nil
 }
 
 // SaveConfig saves a profile to the config file.
@@ -47,7 +58,7 @@ func SaveConfig(configPath, profileName string, sourceCfg, targetCfg models.Data
 	if err == nil {
 		json.Unmarshal(file, &config)
 	}
-	
+
 	if config.Profiles == nil {
 		config.Profiles = make(map[string]Profile)
 	}

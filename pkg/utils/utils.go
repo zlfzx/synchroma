@@ -28,3 +28,10 @@ func EscapeIdentifier(name string) string {
 	}
 	return fmt.Sprintf("`%s`", name)
 }
+
+func EscapeIdentifierPG(name string) string {
+	if name == "PRIMARY" {
+		return ""
+	}
+	return fmt.Sprintf("\"%s\"", name)
+}

@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jmoiron/sqlx v1.4.0
+	github.com/lib/pq v1.10.9
 	github.com/spf13/cobra v1.10.2
 )
 
