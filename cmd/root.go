@@ -272,44 +272,44 @@ func interactiveConfig(configPath string) {
 	var profileName, database, sHost, sPort, sUser, sPass, tHost, tPort, tUser, tPass, sDBName, tDBName, saveConfig string
 
 	fmt.Print("Please provide profile name (default): ")
-	fmt.Scanln(&profileName)
+	_, _ = fmt.Scanln(&profileName)
 	if profileName == "" {
 		profileName = "default"
 	}
 
 	fmt.Print("Please provide the database type (mysql/postgres): ")
-	fmt.Scanln(&database)
+	_, _ = fmt.Scanln(&database)
 	if database == "" {
 		database = "mysql"
 	}
 
 	fmt.Println("Please provide the source database connection details")
 	fmt.Print("- host: ")
-	fmt.Scanln(&sHost)
+	_, _ = fmt.Scanln(&sHost)
 	fmt.Print("- port: ")
-	fmt.Scanln(&sPort)
+	_, _ = fmt.Scanln(&sPort)
 	fmt.Print("- user: ")
-	fmt.Scanln(&sUser)
+	_, _ = fmt.Scanln(&sUser)
 	fmt.Print("- password: ")
-	fmt.Scanln(&sPass)
+	_, _ = fmt.Scanln(&sPass)
 	fmt.Print("- database name: ")
-	fmt.Scanln(&sDBName)
+	_, _ = fmt.Scanln(&sDBName)
 
 	fmt.Println("Please provide the target database connection details")
 	fmt.Print("- host: ")
-	fmt.Scanln(&tHost)
+	_, _ = fmt.Scanln(&tHost)
 	fmt.Print("- port: ")
-	fmt.Scanln(&tPort)
+	_, _ = fmt.Scanln(&tPort)
 	fmt.Print("- user: ")
-	fmt.Scanln(&tUser)
+	_, _ = fmt.Scanln(&tUser)
 	fmt.Print("- password: ")
-	fmt.Scanln(&tPass)
+	_, _ = fmt.Scanln(&tPass)
 	fmt.Print("- database name: ")
-	fmt.Scanln(&tDBName)
+	_, _ = fmt.Scanln(&tDBName)
 
 	fmt.Println()
 	fmt.Print("Do you want to save this configuration? (y/N): ")
-	fmt.Scanln(&saveConfig)
+	_, _ = fmt.Scanln(&saveConfig)
 
 	if strings.ToLower(saveConfig) == "y" {
 		src := models.DataSource{Database: database, Host: sHost, Port: sPort, User: sUser, Password: sPass, DBName: sDBName}

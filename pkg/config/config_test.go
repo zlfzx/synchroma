@@ -21,7 +21,7 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		}`
-		os.WriteFile(configPath, []byte(content), 0600)
+		_ = os.WriteFile(configPath, []byte(content), 0600)
 
 		src, tgt, err := LoadConfig(configPath, "default")
 		if err != nil {
@@ -54,7 +54,7 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		}`
-		os.WriteFile(configPath, []byte(content), 0600)
+		_ = os.WriteFile(configPath, []byte(content), 0600)
 
 		src, tgt, err := LoadConfig(configPath, "staging")
 		if err != nil {
@@ -73,7 +73,7 @@ func TestLoadConfig(t *testing.T) {
 		configPath := filepath.Join(tmpDir, "config.json")
 
 		content := `{"profiles": {"default": {"source": {}, "target": {}}}}`
-		os.WriteFile(configPath, []byte(content), 0600)
+		_ = os.WriteFile(configPath, []byte(content), 0600)
 
 		_, _, err := LoadConfig(configPath, "production")
 		if err == nil {
@@ -100,7 +100,7 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		}`
-		os.WriteFile(configPath, []byte(content), 0600)
+		_ = os.WriteFile(configPath, []byte(content), 0600)
 
 		src, _, err := LoadConfig(configPath, "")
 		if err != nil {
@@ -127,7 +127,7 @@ func TestLoadProfile(t *testing.T) {
 				}
 			}
 		}`
-		os.WriteFile(configPath, []byte(content), 0600)
+		_ = os.WriteFile(configPath, []byte(content), 0600)
 
 		profile, err := LoadProfile(configPath, "default")
 		if err != nil {
@@ -174,11 +174,11 @@ func TestSaveConfig(t *testing.T) {
 
 		src1 := models.DataSource{Database: "mysql", Host: "localhost"}
 		tgt1 := models.DataSource{Database: "mysql", Host: "remote1"}
-		SaveConfig(configPath, "default", src1, tgt1)
+		_ = SaveConfig(configPath, "default", src1, tgt1)
 
 		src2 := models.DataSource{Database: "postgres", Host: "pg-host"}
 		tgt2 := models.DataSource{Database: "postgres", Host: "pg-remote"}
-		SaveConfig(configPath, "staging", src2, tgt2)
+		_ = SaveConfig(configPath, "staging", src2, tgt2)
 
 		// Both profiles should exist
 		_, _, err := LoadConfig(configPath, "default")

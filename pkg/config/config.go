@@ -56,7 +56,7 @@ func SaveConfig(configPath, profileName string, sourceCfg, targetCfg models.Data
 	var config Config
 	file, err := os.ReadFile(configPath)
 	if err == nil {
-		json.Unmarshal(file, &config)
+		_ = json.Unmarshal(file, &config)
 	}
 
 	if config.Profiles == nil {
