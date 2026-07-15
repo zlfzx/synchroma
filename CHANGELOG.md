@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-15
+
+### Added
+- **PostgreSQL Support**: Synchroma now fully supports PostgreSQL (`postgres`), alongside MySQL. Features comprehensive synchronization of PostgreSQL tables, columns, constraints, foreign keys, views, triggers, and routines. Added auto-detection and appropriate SQL dialects via the new `SchemaProvider` interface architecture.
+- **Destructive Operation Warnings**: Added intelligent pre-flight detection for destructive operations (`DROP TABLE`, `DROP COLUMN`, `DROP INDEX`, etc.). When running with `--apply`, Synchroma now pauses and displays a safety prompt if data loss is detected, preventing accidental deletions.
+- **Force Mode**: Added a new `--force` flag to bypass the interactive safety prompts during `--apply` (ideal for automated CI/CD pipelines).
+- **Table Filtering**: Added `--include` and `--exclude` flags to selectively synchronize specific tables. These filters can be specified via the CLI or persisted inside the `~/.synchroma.json` configuration profile.
+- **CI/CD Integration**: Introduced automated GitHub Actions workflows for continuous integration, covering automated testing, linting (`golangci-lint`), and multi-platform compilation.
+
+### Fixed
+- **Dependency Sorting**: Resolved a bug in the Topological Sort algorithm where parent tables were sometimes incorrectly queued after child tables, causing foreign key constraint errors during table creation. 
+
 ## [0.3.0] - 2026-07-07
 
 ### Added
