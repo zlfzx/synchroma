@@ -11,10 +11,12 @@ import (
 )
 
 type SyncOptions struct {
-	SourceCfg  models.DataSource
-	TargetCfg  models.DataSource
-	DropTables bool
-	OnProgress func(msg string)
+	SourceCfg     models.DataSource
+	TargetCfg     models.DataSource
+	DropTables    bool
+	ExcludeTables []string
+	IncludeTables []string
+	OnProgress    func(msg string)
 }
 
 type SyncStats struct {
@@ -36,8 +38,10 @@ type SyncStats struct {
 }
 
 type SyncResult struct {
-	SQL   string
-	Stats *SyncStats
+	SQL               string
+	Stats             *SyncStats
+	HasDestructiveOps bool
+	DestructiveOps    []string
 }
 
 func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
@@ -60,9 +64,34 @@ func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
 	defer targetSchema.Close()
 
 	outputSql := outputSQL(opts.SourceCfg, opts.TargetCfg)
-	outputSql += "SET FOREIGN_KEY_CHECKS=0;\n\n"
+	outputSql += sourceSchema.DisableFKChecks() + "\n\n"
 
 	var stats SyncStats
+	var destructiveOps []string
+	var destructiveMu sync.Mutex
+
+	addDestructiveOp := func(op string) {
+		destructiveMu.Lock()
+		destructiveOps = append(destructiveOps, op)
+		destructiveMu.Unlock()
+	}
+
+	// Build exclude/include maps for O(1) lookup
+	excludeMap := make(map[string]bool)
+	for _, t := range opts.ExcludeTables {
+		excludeMap[strings.TrimSpace(t)] = true
+	}
+	includeMap := make(map[string]bool)
+	for _, t := range opts.IncludeTables {
+		includeMap[strings.TrimSpace(t)] = true
+	}
+
+	shouldProcess := func(tableName string) bool {
+		if len(includeMap) > 0 {
+			return includeMap[tableName]
+		}
+		return !excludeMap[tableName]
+	}
 
 	// 1. Prepare Tables
 	tableDependencies, err := sourceSchema.GetTableDependencies()
@@ -89,6 +118,17 @@ func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
 
 	graph := utils.BuildDependencyGraph(tables, tableDependencies)
 	orderedTables := utils.TopologicalSort(graph, tableIndex)
+
+	// Apply table filtering
+	var filteredTables []string
+	for _, name := range orderedTables {
+		if shouldProcess(name) {
+			filteredTables = append(filteredTables, name)
+		} else {
+			logMsg(fmt.Sprintf(" [⊘] Skipping table: %s (filtered)", name))
+		}
+	}
+	orderedTables = filteredTables
 
 	targetTablesList, err := targetSchema.GetTables()
 	if err != nil {
@@ -152,43 +192,54 @@ func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
 				}
 				if len(props) > 0 {
 					propSql := sourceSchema.CreateAlterTableProperties(name, props)
-					localOutput += "\n-- Table Properties: " + name + "\n" + propSql + "\n"
+					if propSql != "" {
+						localOutput += "\n-- Table Properties: " + name + "\n" + propSql + "\n"
 
-					printMu.Lock()
-					logMsg(fmt.Sprintf(" [✓] Update properties for table: %s", name))
-					printMu.Unlock()
+						printMu.Lock()
+						logMsg(fmt.Sprintf(" [✓] Update properties for table: %s", name))
+						printMu.Unlock()
 
-					stats.mu.Lock()
-					stats.TablePropsSynced++
-					tableModified = true
-					stats.mu.Unlock()
+						stats.mu.Lock()
+						stats.TablePropsSynced++
+						tableModified = true
+						stats.mu.Unlock()
+					}
 				}
 
 				// Columns
-				colSql, err := compareColumns(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
+				colSql, colDestructive, err := compareColumns(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
 				if err != nil {
 					logMsg(fmt.Sprintf("Failed to compare columns for %s: %v", name, err))
 				} else if colSql != "" {
 					localOutput += colSql
 					tableModified = true
 				}
+				for _, d := range colDestructive {
+					addDestructiveOp(d)
+				}
 
 				// Indexes
-				idxSql, err := compareIndexes(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
+				idxSql, idxDestructive, err := compareIndexes(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
 				if err != nil {
 					logMsg(fmt.Sprintf("Failed to compare indexes for %s: %v", name, err))
 				} else if idxSql != "" {
 					localOutput += idxSql
 					tableModified = true
 				}
+				for _, d := range idxDestructive {
+					addDestructiveOp(d)
+				}
 
 				// FKs
-				fkSql, err := compareForeignKeys(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
+				fkSql, fkDestructive, err := compareForeignKeys(sourceSchema, targetSchema, name, &stats, &printMu, logMsg)
 				if err != nil {
 					logMsg(fmt.Sprintf("Failed to compare foreign keys for %s: %v", name, err))
 				} else if fkSql != "" {
 					localOutput += fkSql
 					tableModified = true
+				}
+				for _, d := range fkDestructive {
+					addDestructiveOp(d)
 				}
 
 				if tableModified {
@@ -211,10 +262,15 @@ func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
 	// 3. Drop Tables
 	if opts.DropTables {
 		for targetName := range targetTablesMap {
+			if !shouldProcess(targetName) {
+				continue
+			}
 			if _, exists := sourceTablesMap[targetName]; !exists {
 				dropSql := targetSchema.CreateDropTable(targetName)
 				outputSql += "\n-- Drop Table: " + targetName + "\n" + dropSql + "\n"
 				logMsg(fmt.Sprintf(" [✓] Drop table: %s", targetName))
+
+				addDestructiveOp(fmt.Sprintf("DROP TABLE: %s", targetName))
 
 				stats.mu.Lock()
 				stats.TablesDropped++
@@ -240,19 +296,23 @@ func GenerateSyncSQL(opts SyncOptions) (*SyncResult, error) {
 		outputSql += routinesSql
 	}
 
-	outputSql += "\nSET FOREIGN_KEY_CHECKS=1;\n"
+	outputSql += "\n" + sourceSchema.EnableFKChecks() + "\n"
 
 	return &SyncResult{
-		SQL:   outputSql,
-		Stats: &stats,
+		SQL:               outputSql,
+		Stats:             &stats,
+		HasDestructiveOps: len(destructiveOps) > 0,
+		DestructiveOps:    destructiveOps,
 	}, nil
 }
 
-func compareColumns(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, error) {
+func compareColumns(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, []string, error) {
 	outputSql := ""
+	var destructiveOps []string
+
 	sourceColumns, err := sourceSchema.GetColumns(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	sourceMapColumns := make(map[string]models.Column)
@@ -262,7 +322,7 @@ func compareColumns(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 
 	targetColumns, err := targetSchema.GetColumns(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	targetMapColumns := make(map[string]models.Column)
 	for _, targetColumn := range targetColumns {
@@ -301,6 +361,8 @@ func compareColumns(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 			logMsg(fmt.Sprintf(" [✓] Drop column: %s from table: %s", name, tableName))
 			printMu.Unlock()
 
+			destructiveOps = append(destructiveOps, fmt.Sprintf("DROP COLUMN: %s.%s", tableName, name))
+
 			stats.mu.Lock()
 			stats.ColumnsDropped++
 			stats.mu.Unlock()
@@ -310,18 +372,20 @@ func compareColumns(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 	if outputSql != "" {
 		outputSql = "\n-- Table Columns: " + tableName + "\n" + outputSql + "\n"
 	}
-	return outputSql, nil
+	return outputSql, destructiveOps, nil
 }
 
-func compareIndexes(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, error) {
+func compareIndexes(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, []string, error) {
 	outputSql := ""
+	var destructiveOps []string
+
 	sourceIndexes, err := sourceSchema.GetIndexes(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	targetIndexes, err := targetSchema.GetIndexes(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	sourceMap := make(map[string]models.IndexInfo)
@@ -338,7 +402,7 @@ func compareIndexes(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 			outputSql += sourceSchema.CreateAddIndex(idx) + "\n"
 
 			printMu.Lock()
-			logMsg(fmt.Sprintf(" [✓] Create index: %s on table: %s", idx.IndexName, tableName) )
+			logMsg(fmt.Sprintf(" [✓] Create index: %s on table: %s", idx.IndexName, tableName))
 			printMu.Unlock()
 
 			stats.mu.Lock()
@@ -358,6 +422,8 @@ func compareIndexes(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 			logMsg(fmt.Sprintf(" [✓] Drop index: %s on table: %s", idx.IndexName, tableName))
 			printMu.Unlock()
 
+			destructiveOps = append(destructiveOps, fmt.Sprintf("DROP INDEX: %s on %s", idx.IndexName, tableName))
+
 			stats.mu.Lock()
 			stats.IndexesDropped++
 			stats.mu.Unlock()
@@ -367,18 +433,20 @@ func compareIndexes(sourceSchema, targetSchema schema.SchemaProvider, tableName 
 	if outputSql != "" {
 		outputSql = "\n-- Table Indexes: " + tableName + "\n" + outputSql + "\n"
 	}
-	return outputSql, nil
+	return outputSql, destructiveOps, nil
 }
 
-func compareForeignKeys(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, error) {
+func compareForeignKeys(sourceSchema, targetSchema schema.SchemaProvider, tableName string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, []string, error) {
 	outputSql := ""
+	var destructiveOps []string
+
 	sourceFK, err := sourceSchema.GetForeignKeys(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	targetFK, err := targetSchema.GetForeignKeys(tableName)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	sourceFKMap := make(map[string]models.ForeignKey)
@@ -412,6 +480,8 @@ func compareForeignKeys(sourceSchema, targetSchema schema.SchemaProvider, tableN
 			logMsg(fmt.Sprintf(" [✓] Drop foreign key: %s on table: %s", fk.ConstraintName, tableName))
 			printMu.Unlock()
 
+			destructiveOps = append(destructiveOps, fmt.Sprintf("DROP FK: %s on %s", fk.ConstraintName, tableName))
+
 			stats.mu.Lock()
 			stats.FKsDropped++
 			stats.mu.Unlock()
@@ -421,7 +491,7 @@ func compareForeignKeys(sourceSchema, targetSchema schema.SchemaProvider, tableN
 	if outputSql != "" {
 		outputSql = "\n-- Table FKs: " + tableName + "\n" + outputSql + "\n"
 	}
-	return outputSql, nil
+	return outputSql, destructiveOps, nil
 }
 
 func compareAdvancedObjects(sourceSchema, targetSchema schema.SchemaProvider, objectType string, stats *SyncStats, printMu *sync.Mutex, logMsg func(string)) (string, error) {

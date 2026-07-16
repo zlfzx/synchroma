@@ -4,7 +4,7 @@
 
 Whether you are migrating from development to production or syncing data structures across distributed teams, Synchroma analyzes the differences (Tables, Columns, Indexes, Foreign Keys, Views, Triggers, and Routines) and automatically generates the exact SQL `CREATE`, `ALTER`, and `DROP` scripts needed to make the target database identical to the source.
 
-Currently, it fully supports **MySQL** (with plans to support PostgreSQL and others in the future). It can be used as a standalone CLI tool or imported as a native Go library.
+It fully supports **MySQL** and **PostgreSQL**. It can be used as a standalone CLI tool or imported as a native Go library.
 
 ## Installation
 
@@ -48,6 +48,15 @@ synchroma --dry-run
 
 # Directly apply the generated SQL script to the target database
 synchroma --apply
+
+# Apply with force (skip destructive operation warnings)
+synchroma --apply --force
+
+# Exclude specific tables from sync
+synchroma --exclude migrations,sessions,audit_logs
+
+# Only sync specific tables
+synchroma --include users,orders,products
 ```
 
 ## Usage as a Go Library
@@ -107,6 +116,7 @@ func main() {
 
 ### TODO
 - [x] Support MySQL
+- [x] Support PostgreSQL
 - [x] Compare table schema
 - [x] Compare column schema
 - [x] Compare index schema
@@ -114,5 +124,6 @@ func main() {
 - [x] Compare trigger schema
 - [x] Compare view schema
 - [x] Compare routine schema
-- [ ] Support PostgreSQL
+- [x] Destructive operation warnings
+- [x] Table filtering (include/exclude)
 - [ ] Add more documentation

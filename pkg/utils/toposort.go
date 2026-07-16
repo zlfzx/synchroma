@@ -32,18 +32,24 @@ func BuildDependencyGraph(tables []string, foreignKeys map[string][]string) Depe
 // - graph: map[table] = daftar tabel yang direferensikan (dependency)
 // - tableIndex: posisi tabel di source database (untuk menjaga urutan stabil)
 func TopologicalSort(graph DependencyGraph, tableIndex map[string]int) []string {
-	// Hitung indegree (berapa banyak tabel lain yang tergantung pada tabel ini)
+	// graph[A] = [B, C] means A depends on B and C (A needs B and C to exist first).
 	indegree := make(map[string]int)
+	dependents := make(map[string][]string)
+
 	for node := range graph {
 		if _, ok := indegree[node]; !ok {
 			indegree[node] = 0
 		}
+		if _, ok := dependents[node]; !ok {
+			dependents[node] = []string{}
+		}
+
 		for _, dep := range graph[node] {
-			indegree[dep]++
+			indegree[node]++
+			dependents[dep] = append(dependents[dep], node)
 		}
 	}
 
-	// Ambil semua node dengan indegree == 0
 	queue := []string{}
 	for node, deg := range indegree {
 		if deg == 0 {
@@ -51,7 +57,6 @@ func TopologicalSort(graph DependencyGraph, tableIndex map[string]int) []string 
 		}
 	}
 
-	// Urutkan queue awal sesuai urutan tabel di source database
 	sort.SliceStable(queue, func(i, j int) bool {
 		return tableIndex[queue[i]] < tableIndex[queue[j]]
 	})
@@ -62,15 +67,13 @@ func TopologicalSort(graph DependencyGraph, tableIndex map[string]int) []string 
 		queue = queue[1:]
 		sorted = append(sorted, current)
 
-		// Kurangi indegree dari tabel yang bergantung pada current
-		for _, dep := range graph[current] {
-			indegree[dep]--
-			if indegree[dep] == 0 {
-				queue = append(queue, dep)
+		for _, dependentNode := range dependents[current] {
+			indegree[dependentNode]--
+			if indegree[dependentNode] == 0 {
+				queue = append(queue, dependentNode)
 			}
 		}
 
-		// Jaga urutan queue sesuai urutan source
 		sort.SliceStable(queue, func(i, j int) bool {
 			return tableIndex[queue[i]] < tableIndex[queue[j]]
 		})
